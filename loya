@@ -1,0 +1,353 @@
+<?php
+// Подключение к базе данных
+$host = 'localhost';
+$db = 'calendardb';
+$username = 'root';
+$password = '';
+
+$conn = new PDO("mysql:host=$host;dbname=$db", $username, $password);
+
+// Получение текущего месяца и года
+$currentMonth = date('m');
+$currentYear = date('Y');
+
+// Переключение между месяцами и годами
+if (isset($_GET['month'])) {
+    $currentMonth = $_GET['month'] ?? date('m');
+}
+
+if (isset($_GET['year'])) {
+    $currentYear = $_GET['year'] ?? date('Y');
+}
+
+// Формирование даты для начала и конца текущего месяца
+$startDate = date('Y-m-d', strtotime($currentYear . '-' . $currentMonth . '-01'));
+$endDate = date('Y-m-t', strtotime($startDate));
+
+// Отображение дней месяца
+$days = array();
+$startDateTimestamp = strtotime($startDate);
+$endDateTimestamp = strtotime($endDate);
+
+for ($i = $startDateTimestamp; $i <= $endDateTimestamp; $i += 86400) {
+    $dayNumber = date('j', $i);
+    $dayName = date('l', $i);
+
+    $days[$dayNumber] = array(
+        'name' => $dayName,
+        'events' => array(),
+    );
+}
+
+// Запрос на получение событий
+$query = "SELECT * FROM events WHERE event_date BETWEEN :start_date AND :end_date";
+$stmt = $conn->prepare($query);
+$stmt->bindParam(':start_date', $startDate);
+$stmt->bindParam(':end_date', $endDate);
+$stmt->execute();
+
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $dayNumber = date('j', strtotime($row['event_date']));
+
+    $days[$dayNumber]['events'][] = $row;
+}
+?>
+
+<?php
+// Добавление события
+if (isset($_POST['add_event'])) {
+    $title = $_POST['title'];
+    $date = $_POST['date'];
+    $color = $_POST['color'];
+
+    // Проверка наличия обязательных полей
+    if (!empty($title) && !empty($date)) {
+        $query = "INSERT INTO events (title, event_date, color) VALUES (:title, :date, :color)";
+        $stmt = $conn->prepare($query);
+        $stmt->bindParam(':title', $title);
+        $stmt->bindParam(':date', $date);
+        $stmt->bindParam(':color', $color);
+        $stmt->execute();
+    }
+}
+
+
+// Редактирование события
+if (isset($_POST['edit_event'])) {
+    $id = $_POST['event_id'];
+    $event_title = $_POST['event_title'];
+    $date = $_POST['date'];
+
+    // Проверка наличия обязательных полей
+    if (!empty($id) && !empty($event_title) && !empty($date)) {
+        $query = "UPDATE events SET event_title = :event_title, event_date = :date WHERE id = :id";
+        $stmt = $conn->prepare($query);
+        $stmt->bindParam(':event_title', $event_title);
+        $stmt->bindParam(':date', $date);
+        $stmt->bindParam(':id', $id);
+        $stmt->execute();
+    }
+}
+
+// Удаление события
+if (isset($_GET['delete'])) {
+    $id = $_GET['delete'];
+
+    $query = "DELETE FROM events WHERE id = :id"; // Исправлено event_id на id
+    $stmt = $conn->prepare($query);
+    $stmt->bindParam(':id', $id);
+    $stmt->execute();
+}
+
+if ($dayNumber == $currentDay && $currentMonth == date('m') && $currentYear == date('Y')) echo 'class="today"'; ?>>
+  <span class="day-number" onclick="showMiniWindow(<?php echo $dayNumber; ?>)">
+    <?php echo $dayNumber; ?>
+  </span>
+
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <event_title>Рабочий календарь</event_title>
+</head>
+
+<body>
+    <h1><?php echo date('F Y', strtotime($startDate)); ?></h1>
+    <div>
+        <a href="?month=<?php echo ($currentMonth - 1) > 0 ? ($currentMonth - 1) : 12; ?>&year=<?php echo ($currentMonth - 1) > 0 ? $currentYear : ($currentYear - 1); ?>">Предыдущий месяц</a>
+        <a href="?month=<?php echo ($currentMonth + 1) <= 12 ? ($currentMonth + 1) : 1; ?>&year=<?php echo ($currentMonth + 1) <= 12 ? $currentYear : ($currentYear + 1); ?>">Следующий месяц</a>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Пн</th>
+                <th>Вт</th>
+                <th>Ср</th>
+                <th>Чт</th>
+                <th>Пт</th>
+                <th>Сб</th>
+                <th>Вс</th>
+            </tr>
+            <td>
+  <span class="day-number" onclick="showMiniWindow(<?php echo $dayNumber; ?>) 
+<?php
+$currentDayOfMonth = ""; // Например, текущий день месяца равен 10 ?>
+<td <?php if ($dayNumber == $currentDayOfMonth) echo 'class="today"'; ?>>
+  <span class="day-number" onclick="showAddEventModal(<?php echo $currentDayOfMonth; ?>)">
+    <?php echo $currentDayOfMonth; ?>
+  </span>
+</td>
+<?php
+    if (!empty($day['events'])) {
+        foreach ($day['events'] as $event) {
+          // ... ваш код для отображения событий
+        }
+    }
+?>
+<?php
+
+    if (!empty($day['events'])) {
+        foreach ($day['events'] as $event) {
+            echo '<br>';
+            echo '<a href="event.php?id=' . $event['id'] . '">' . $event['title'] . '</a>';
+        }
+    }
+    ?>
+<!-- HTML для модального окна или формы -->
+<span class="day-number" onclick="showAddEventModal(<?php echo $currentDayOfMonth; ?>)">
+  <?php echo $currentDayOfMonth; ?>
+</span>
+
+<div id="addEventModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddEventModal()">&times;</span>
+        <h3>Добавить событие</h3>
+        <form method="POST" action="">
+            <label for="title">Название:</label>
+            <input type="text" name="title" id="title" required>
+            <label for="date">Дата:</label>
+            <input type="date" name="date" id="date" required>
+            <label for="color">Цвет:</label>
+            <input type="color" name="color" id="color">
+            <input type="submit" name="add_event" value="Добавить">
+        </form>
+    </div>
+</div>
+
+<!-- JavaScript для управления модальным окном -->
+<script>
+    function showAddEventModal(day) {
+        document.getElementById("addEventModal").style.display = "block";
+        document.getElementById("date").value = "<?php echo date('Y-m-', strtotime($startDate)) ?>" + day;
+    }
+
+    function closeAddEventModal() {
+        document.getElementById("addEventModal").style.display = "none";
+    }
+</script>
+
+        </thead>
+        <tbody>
+            <?php
+            $lastDayOfMonth = date('t', strtotime($startDate));
+            $currentDayOfWeek = date('N', strtotime($startDate));
+            $tableRowCount = ceil(($lastDayOfMonth + $currentDayOfWeek - 1) / 7);
+
+            $currentDayOfMonth = 1;
+if (isset($day['event_title'])) {
+    echo $day['event_title'];
+}
+
+            for ($i = 1; $i <= $tableRowCount; $i++) {
+                echo '<tr>';
+
+                for ($j = 1; $j <= 7; $j++) {
+                    if ($i == 1 && $j < $currentDayOfWeek) {
+                        echo '<td></td>';
+                    } elseif ($currentDayOfMonth > $lastDayOfMonth) {
+                        echo '<td></td>';
+                    } else {
+                        // Проверяем наличие дня в массиве $days
+                        if (isset($days[$currentDayOfMonth])) {
+                            $day = $days[$currentDayOfMonth];
+                        } else {
+                            $day = array('name' => '', 'events' => array());
+                        }
+
+                        echo '<td>';
+
+                        if ($day['name'] == 'Saturday' || $day['name'] == 'Sunday') {
+                            echo '<span style="color:red;">' . $currentDayOfMonth . '</span>';
+                        } else {
+                            echo $currentDayOfMonth;
+                        }
+
+                        if (!empty($day['events'])) {
+                            foreach ($day['events'] as $event) {
+                                echo '<br>';
+                                
+                                echo '<a href="event.php?id=' . $event['id'] . '">' . $event['event_title'] . '</a>';
+                            }
+                        }
+
+                        echo '</td>';
+
+                        $currentDayOfMonth++;
+                    }
+                }
+
+                echo '</tr>';
+            }
+            ?>
+        </tbody>
+    </table>
+<p>
+    <div id="mini-window">
+  <input type="text" id="event-title-input" placeholdder="Введите название события">
+  <input type="date" id="event-date-input">
+  <select id="event-color-select">
+    <option value="red">Красный</option>
+    <option value="blue">Синий</option>
+    <option value="green">Зеленый</option>
+  </select>
+  <button id="save-event-button">Сохранить</button>
+  <button id="delete-event-button">Удалить</button>
+</div>
+
+</body>
+<script>
+function showMiniWindow(dayNumber) {
+  $('#mini-window').show();
+  
+  var event = days[dayNumber].events[0]; // Получите данные события для выбранной даты, предполагается, что у одного дня может быть только одно событие
+  if (event) {
+    // Заполните элементы в мини окне данными события
+    $('#event-title-input').val(event.title);
+    $('#event-date-input').val(event.date);
+    $('#event-color-select').val(event.color);
+  } else {
+    // Очистите элементы в мини окне, если нет события для выбранной даты
+    $('#event-title-input').val('');
+    $('#event-date-input').val('');
+    $('#event-color-select').val('red');
+  }
+  
+  // Добавьте обработчик события для кнопки сохранения
+  $('#save-event-button').on('click', function() {
+    var title = $('#event-title-input').val();
+    var date = $('#event-date-input').val();
+    var color = $('#event-color-select').val();
+    
+    if (event) {
+      // Выполните логику обновления события, если оно уже существует
+      $.ajax({
+        method: "POST",
+        url: "update_event.php",
+        data: {
+          id: event.id,
+          title: title,
+          date: date,
+          color: color
+        },
+        success: function(response) {
+          // Обработайте успешный ответ после обновления
+        },
+        error: function() {
+          // Обработайте ошибку обновления
+        }
+      });
+    } else {
+      // Выполните логику создания нового события, если оно не существует
+      $.ajax({
+        method: "POST",
+        url: "create_event.php",
+        data: {
+          title: title,
+          date: date,
+          color: color
+        },
+        success: function(response) {
+          // Обработайте успешный ответ после создания
+        },
+        error: function() {
+          // Обработайте ошибку создания
+        }
+      });
+    }
+    
+    // Закройте мини окно
+    $('#mini-window').hide();
+  });
+  
+  // Добавьте обработчик события для кнопки удаления
+  $('#delete-event-button').on('click', function() {
+    if (event) {
+      var eventId = event.id;
+      
+      // Выполните логику удаления события
+      $.ajax({
+        method: "GET",
+        url: "delete_event.php",
+        data: {
+          id: eventId
+        },
+        success: function(response) {
+          // Обработайте успешный ответ после удаления
+        },
+        error: function() {
+          // Обработайте ошибку удаления
+        }
+      });
+    }
+    
+    // Закройте мини окно
+    $('#mini-window').hide();
+  });
+}
+
+</script>
+
+</html> </form>
+    <style>
